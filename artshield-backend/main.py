@@ -1,14 +1,24 @@
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import create_engine, Column, Integer, String, DateTime
+from sqlalchemy.orm import declarative_base, sessionmaker
 from PIL import Image
 import imagehash
-from sqlalchemy import create_engine, Column, Integer, String
-from sqlalchemy.orm import sessionmaker, declarative_base
+import hashlib
 import io
+import os
+from datetime import datetime, timezone
+from dotenv import load_dotenv
 
+# Load environment variables
+load_dotenv()
+
+# =========================
+# App Setup
+# =========================
 app = FastAPI()
 
-# Allow frontend connection
+# Enable CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -17,64 +27,148 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# -----------------------
-# DATABASE SETUP
-# -----------------------
+# =========================
+# Database Setup
+# =========================
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-DATABASE_URL = "sqlite:///./artshield.db"
+if not DATABASE_URL:
+    raise Exception("❌ DATABASE_URL not found! Check your .env file.")
 
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
-SessionLocal = sessionmaker(bind=engine)
+engine = create_engine(DATABASE_URL)
 Base = declarative_base()
+SessionLocal = sessionmaker(bind=engine)
+
 
 class Artwork(Base):
     __tablename__ = "artworks"
+
     id = Column(Integer, primary_key=True, index=True)
-    hash = Column(String, index=True)
-    filename = Column(String)
+    sha256 = Column(String, unique=True, index=True)
+    phash = Column(String)
+    owner_name = Column(String)
+    owner_email = Column(String)
+    registered_at = Column(DateTime)
+
 
 Base.metadata.create_all(bind=engine)
 
-# -----------------------
-# UPLOAD ENDPOINT
-# -----------------------
+
+# =========================
+# Utility Functions
+# =========================
+def calculate_sha256(file_bytes):
+    return hashlib.sha256(file_bytes).hexdigest()
+
+
+def calculate_phash(image):
+    return str(imagehash.phash(image))
+
+
+def calculate_similarity(phash1, phash2):
+    hash1 = imagehash.hex_to_hash(phash1)
+    hash2 = imagehash.hex_to_hash(phash2)
+    distance = hash1 - hash2
+    similarity = (1 - distance / 64) * 100
+    return round(similarity, 2)
+
+
+# =========================
+# Routes
+# =========================
+@app.get("/")
+def root():
+    return {"message": "ArtShield Backend Running 🚀"}
+
 
 @app.post("/upload")
-async def upload_image(file: UploadFile = File(...)):
-    contents = await file.read()
-    image = Image.open(io.BytesIO(contents))
-
-    new_hash = str(imagehash.phash(image))
-
+async def upload_image(
+    file: UploadFile = File(...),
+    owner_name: str = Form(default="Unknown"),
+    owner_email: str = Form(default="Unknown"),
+):
     db = SessionLocal()
-    artworks = db.query(Artwork).all()
 
-    similarity_found = False
-    similarity_percentage = 0
+    try:
+        file_bytes = await file.read()
 
-    for art in artworks:
-        old_hash = imagehash.hex_to_hash(art.hash)
-        diff = imagehash.hex_to_hash(new_hash) - old_hash
-        similarity = (64 - diff) * 100 / 64
+        # Calculate SHA256
+        sha256_hash = calculate_sha256(file_bytes)
 
-        if similarity > 85:
-            similarity_found = True
-            similarity_percentage = similarity
-            break
+        # Check if exact duplicate exists
+        existing_exact = db.query(Artwork).filter(
+            Artwork.sha256 == sha256_hash
+        ).first()
 
-    # Store new hash
-    new_artwork = Artwork(hash=new_hash, filename=file.filename)
-    db.add(new_artwork)
-    db.commit()
-    db.close()
+        # If exact duplicate — don't save
+        if existing_exact:
+            return {
+                "hash": sha256_hash,
+                "similarity": 100.0,
+                "message": "⚠️ Exact duplicate found",
+                "is_duplicate": True,
+                "original_owner": existing_exact.owner_name,
+                "original_email": existing_exact.owner_email,
+                "registered_at": existing_exact.registered_at.strftime(
+                    "%B %d, %Y at %I:%M %p"
+                ),
+            }
 
-    if similarity_found:
+        # Open image and calculate pHash
+        image = Image.open(io.BytesIO(file_bytes)).convert("RGB")
+        phash_value = calculate_phash(image)
+
+        highest_similarity = 0
+        most_similar_artwork = None
+
+        # Compare with existing artworks
+        all_artworks = db.query(Artwork).all()
+        for artwork in all_artworks:
+            similarity = calculate_similarity(phash_value, artwork.phash)
+            if similarity > highest_similarity:
+                highest_similarity = similarity
+                most_similar_artwork = artwork
+
+        # If visually similar above 85% — don't save
+        if highest_similarity >= 85 and most_similar_artwork:
+            return {
+                "hash": phash_value,
+                "similarity": highest_similarity,
+                "message": f"⚠️ Potential Copy Detected ({highest_similarity}% similar)",
+                "is_duplicate": True,
+                "original_owner": most_similar_artwork.owner_name,
+                "original_email": most_similar_artwork.owner_email,
+                "registered_at": most_similar_artwork.registered_at.strftime(
+                    "%B %d, %Y at %I:%M %p"
+                ),
+            }
+
+        # Save new original artwork
+        new_artwork = Artwork(
+            sha256=sha256_hash,
+            phash=phash_value,
+            owner_name=owner_name,
+            owner_email=owner_email,
+            registered_at=datetime.now(timezone.utc),
+        )
+
+        db.add(new_artwork)
+        db.commit()
+
         return {
-            "hash": new_hash,
-            "message": f"⚠ Potential Copy Detected ({similarity_percentage:.2f}% similar)"
+            "hash": phash_value,
+            "similarity": highest_similarity,
+            "message": "✅ Original Image — Registered Successfully!",
+            "is_duplicate": False,
+            "original_owner": owner_name,
+            "original_email": owner_email,
+            "registered_at": new_artwork.registered_at.strftime(
+                "%B %d, %Y at %I:%M %p"
+            ),
         }
 
-    return {
-        "hash": new_hash,
-        "message": "✅ Original Image"
-    }
+    except Exception as e:
+        return {"error": str(e)}
+
+    finally:
+        db.close()
