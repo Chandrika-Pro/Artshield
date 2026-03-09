@@ -4,14 +4,23 @@ import { useState, useRef, useEffect } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 
+interface UploadResult {
+  hash: string;
+  similarity: number;
+  message: string;
+  is_duplicate: boolean;
+  original_owner: string;
+  original_email: string;
+  registered_at: string;
+}
+
 export default function Home() {
   const { data: session, status } = useSession();
   const router = useRouter();
 
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
-  const [hash, setHash] = useState("");
-  const [similarity, setSimilarity] = useState<number | null>(null);
+  const [result, setResult] = useState<UploadResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState("");
@@ -66,6 +75,10 @@ export default function Home() {
       const formData = new FormData();
       formData.append("file", file);
 
+      // Phase 2: Send owner info from Google session
+      formData.append("owner_name", session.user?.name || "Unknown");
+      formData.append("owner_email", session.user?.email || "Unknown");
+
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/upload`,
         {
@@ -80,15 +93,13 @@ export default function Home() {
         throw new Error(data?.error || "Server error. Please try again.");
       }
 
-      setHash(data.hash);
-      setSimilarity(data.similarity);
+      setResult(data);
       setProgress(100);
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "Upload failed.";
       setError(message);
-      setSimilarity(null);
-      setHash("");
+      setResult(null);
     }
 
     setLoading(false);
@@ -104,8 +115,7 @@ export default function Home() {
 
     setFile(selectedFile);
     setPreview(URL.createObjectURL(selectedFile));
-    setHash("");
-    setSimilarity(null);
+    setResult(null);
     setError("");
   };
 
@@ -113,20 +123,6 @@ export default function Home() {
     e.preventDefault();
     setDragActive(false);
     handleFileSelect(e.dataTransfer.files[0] || null);
-  };
-
-  const getRiskLevel = () => {
-    if (similarity === null) return null;
-    if (similarity >= 80) return "High Risk";
-    if (similarity >= 50) return "Moderate Risk";
-    return "Low Risk";
-  };
-
-  const getRiskColor = () => {
-    if (similarity === null) return "";
-    if (similarity >= 80) return "bg-red-500/20 text-red-400";
-    if (similarity >= 50) return "bg-yellow-500/20 text-yellow-400";
-    return "bg-green-500/20 text-green-400";
   };
 
   return (
@@ -188,14 +184,11 @@ export default function Home() {
               Drag & drop your artwork here or click to upload
             </p>
           )}
-
           <input
             type="file"
             hidden
             ref={fileInputRef}
-            onChange={(e) =>
-              handleFileSelect(e.target.files?.[0] || null)
-            }
+            onChange={(e) => handleFileSelect(e.target.files?.[0] || null)}
           />
         </div>
 
@@ -220,9 +213,7 @@ export default function Home() {
 
         {/* Error Message */}
         {error && (
-          <p className="mt-4 text-red-400 text-sm text-center">
-            {error}
-          </p>
+          <p className="mt-4 text-red-400 text-sm text-center">{error}</p>
         )}
 
         {/* Analyze Button */}
@@ -235,21 +226,52 @@ export default function Home() {
         </button>
 
         {/* Results */}
-        {hash && similarity !== null && (
-          <div className="mt-8 p-5 bg-white/10 rounded-xl border border-white/10">
-            <p className="text-sm text-gray-400">Fingerprint</p>
-            <p className="text-xs break-all mt-1">{hash}</p>
+        {result && (
+          <div className={`mt-8 p-5 rounded-xl border transition-all duration-300 ${
+            result.is_duplicate
+              ? "bg-red-500/10 border-red-500/30"
+              : "bg-green-500/10 border-green-500/30"
+          }`}>
 
-            <div className="mt-4 flex flex-col items-center gap-3">
-              <span
-                className={`px-4 py-2 rounded-full text-sm font-semibold ${getRiskColor()}`}
-              >
-                {similarity}% Similarity
-              </span>
+            {/* Status Message */}
+            <p className={`text-center font-semibold text-sm mb-4 ${
+              result.is_duplicate ? "text-red-400" : "text-green-400"
+            }`}>
+              {result.message}
+            </p>
 
-              <span className="text-sm text-gray-300">
-                {getRiskLevel()}
-              </span>
+            {/* Fingerprint */}
+            <div className="bg-white/5 rounded-lg p-3 mb-3">
+              <p className="text-xs text-gray-400 mb-1">Visual Fingerprint</p>
+              <p className="text-xs text-cyan-300 font-mono break-all">{result.hash}</p>
+            </div>
+
+            {/* Owner Info */}
+            <div className="bg-white/5 rounded-lg p-3 mb-3">
+              <p className="text-xs text-gray-400 mb-1">
+                {result.is_duplicate ? "Original Owner" : "Registered By"}
+              </p>
+              <p className="text-sm text-white font-semibold">{result.original_owner}</p>
+              <p className="text-xs text-gray-400">{result.original_email}</p>
+            </div>
+
+            {/* Timestamp */}
+            <div className="bg-white/5 rounded-lg p-3 mb-3">
+              <p className="text-xs text-gray-400 mb-1">
+                {result.is_duplicate ? "Originally Registered On" : "Registered On"}
+              </p>
+              <p className="text-sm text-white">{result.registered_at}</p>
+            </div>
+
+            {/* Similarity */}
+            <div className={`text-center py-2 rounded-lg text-sm font-semibold ${
+              result.similarity >= 80
+                ? "bg-red-500/20 text-red-400"
+                : result.similarity >= 50
+                ? "bg-yellow-500/20 text-yellow-400"
+                : "bg-green-500/20 text-green-400"
+            }`}>
+              {result.similarity}% Similarity
             </div>
           </div>
         )}
