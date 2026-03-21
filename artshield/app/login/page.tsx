@@ -9,6 +9,9 @@ export default function LoginPage() {
 
   useEffect(() => {
     setMounted(true);
+  }, []);
+
+  useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
@@ -17,198 +20,176 @@ export default function LoginPage() {
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
 
-    const nodes: {
-      x: number; y: number; vx: number; vy: number;
-      radius: number; opacity: number;
-    }[] = Array.from({ length: 60 }, () => ({
+    const nodes = Array.from({ length: 70 }, () => ({
       x: Math.random() * canvas.width,
       y: Math.random() * canvas.height,
-      vx: (Math.random() - 0.5) * 0.4,
-      vy: (Math.random() - 0.5) * 0.4,
-      radius: Math.random() * 2 + 1,
-      opacity: Math.random() * 0.5 + 0.1,
+      vx: (Math.random() - 0.5) * 0.35,
+      vy: (Math.random() - 0.5) * 0.35,
+      r: Math.random() * 1.5 + 0.5,
+      o: Math.random() * 0.4 + 0.1,
     }));
 
     let animId: number;
     const animate = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       nodes.forEach((n) => {
-        n.x += n.vx;
-        n.y += n.vy;
+        n.x += n.vx; n.y += n.vy;
         if (n.x < 0 || n.x > canvas.width) n.vx *= -1;
         if (n.y < 0 || n.y > canvas.height) n.vy *= -1;
         ctx.beginPath();
-        ctx.arc(n.x, n.y, n.radius, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(0, 255, 200, ${n.opacity})`;
+        ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(0,229,170,${n.o})`;
         ctx.fill();
       });
-
-      nodes.forEach((a, i) => {
-        nodes.slice(i + 1).forEach((b) => {
-          const dist = Math.hypot(a.x - b.x, a.y - b.y);
-          if (dist < 120) {
-            ctx.beginPath();
-            ctx.moveTo(a.x, a.y);
-            ctx.lineTo(b.x, b.y);
-            ctx.strokeStyle = `rgba(0, 255, 200, ${0.15 * (1 - dist / 120)})`;
-            ctx.lineWidth = 0.5;
-            ctx.stroke();
-          }
-        });
-      });
-
+      nodes.forEach((a, i) => nodes.slice(i + 1).forEach((b) => {
+        const d = Math.hypot(a.x - b.x, a.y - b.y);
+        if (d < 130) {
+          ctx.beginPath();
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(b.x, b.y);
+          ctx.strokeStyle = `rgba(0,229,170,${0.12 * (1 - d / 130)})`;
+          ctx.lineWidth = 0.5;
+          ctx.stroke();
+        }
+      }));
       animId = requestAnimationFrame(animate);
     };
     animate();
 
-    const handleResize = () => {
+    const onResize = () => {
       canvas.width = window.innerWidth;
       canvas.height = window.innerHeight;
     };
-    window.addEventListener("resize", handleResize);
+    window.addEventListener("resize", onResize);
     return () => {
       cancelAnimationFrame(animId);
-      window.removeEventListener("resize", handleResize);
+      window.removeEventListener("resize", onResize);
     };
   }, []);
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center overflow-hidden bg-[#020408]">
-
-      {/* Animated canvas background */}
-      <canvas ref={canvasRef} className="absolute inset-0 z-0" />
-
-      {/* Deep radial glow */}
-      <div className="absolute inset-0 z-0"
-        style={{
-          background: "radial-gradient(ellipse 80% 60% at 50% 50%, rgba(0,255,180,0.06) 0%, transparent 70%)",
-        }}
-      />
-
-      {/* Top-left accent */}
-      <div className="absolute top-0 left-0 w-96 h-96 rounded-full z-0"
-        style={{
-          background: "radial-gradient(circle, rgba(0,200,255,0.08) 0%, transparent 70%)",
-          transform: "translate(-40%, -40%)",
-        }}
-      />
-
-      {/* Bottom-right accent */}
-      <div className="absolute bottom-0 right-0 w-96 h-96 rounded-full z-0"
-        style={{
-          background: "radial-gradient(circle, rgba(120,0,255,0.08) 0%, transparent 70%)",
-          transform: "translate(40%, 40%)",
-        }}
-      />
+    <div style={{
+      minHeight: "100vh",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      background: "radial-gradient(ellipse 120% 80% at 50% 0%, #0a1628 0%, #060810 60%)",
+      position: "relative",
+      overflow: "hidden",
+      fontFamily: "'DM Sans', sans-serif",
+    }}>
+      <canvas ref={canvasRef} style={{ position: "absolute", inset: 0, zIndex: 0 }} />
 
       {/* Main card */}
-      <div
-        className="relative z-10 w-full max-w-md mx-4"
-        style={{
-          opacity: mounted ? 1 : 0,
-          transform: mounted ? "translateY(0)" : "translateY(24px)",
-          transition: "opacity 0.8s ease, transform 0.8s ease",
-        }}
-      >
-        <div
-          className="rounded-3xl p-10 text-center"
-          style={{
-            background: "rgba(255,255,255,0.03)",
-            border: "1px solid rgba(0,255,180,0.15)",
-            backdropFilter: "blur(24px)",
-            boxShadow: "0 0 80px rgba(0,255,180,0.05), 0 0 0 1px rgba(255,255,255,0.05) inset",
-          }}
-        >
-          {/* Shield icon */}
-          <div className="flex justify-center mb-6">
-            <div
-              className="w-20 h-20 rounded-2xl flex items-center justify-center"
-              style={{
-                background: "linear-gradient(135deg, rgba(0,255,180,0.15), rgba(0,150,255,0.1))",
-                border: "1px solid rgba(0,255,180,0.3)",
-                boxShadow: "0 0 30px rgba(0,255,180,0.15)",
-              }}
-            >
-              <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
-                <path
-                  d="M20 4L6 10v10c0 8.5 6 16.5 14 19 8-2.5 14-10.5 14-19V10L20 4z"
-                  stroke="url(#shieldGrad)"
-                  strokeWidth="2"
-                  fill="rgba(0,255,180,0.08)"
-                />
-                <path
-                  d="M14 20l4 4 8-8"
-                  stroke="#00ffb4"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-                <defs>
-                  <linearGradient id="shieldGrad" x1="6" y1="4" x2="34" y2="33">
-                    <stop offset="0%" stopColor="#00ffb4" />
-                    <stop offset="100%" stopColor="#0096ff" />
-                  </linearGradient>
-                </defs>
+      <div style={{
+        position: "relative", zIndex: 10,
+        width: "100%", maxWidth: "420px", margin: "0 20px",
+        opacity: mounted ? 1 : 0,
+        transform: mounted ? "translateY(0)" : "translateY(30px)",
+        transition: "all 0.8s cubic-bezier(0.16, 1, 0.3, 1)",
+      }}>
+        <div style={{
+          borderRadius: "24px", padding: "44px 40px",
+          background: "rgba(255,255,255,0.03)",
+          border: "1px solid rgba(0,229,170,0.15)",
+          backdropFilter: "blur(30px)",
+          boxShadow: "0 0 100px rgba(0,229,170,0.06), 0 20px 60px rgba(0,0,0,0.5)",
+        }}>
+
+          {/* Logo */}
+          <div style={{ display: "flex", justifyContent: "center", marginBottom: "28px" }}>
+            <div style={{
+              width: "72px", height: "72px", borderRadius: "20px",
+              background: "linear-gradient(135deg, rgba(0,229,170,0.12), rgba(108,99,255,0.12))",
+              border: "1px solid rgba(0,229,170,0.3)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              boxShadow: "0 0 40px rgba(0,229,170,0.15)",
+              animation: "float 3s ease-in-out infinite",
+            }}>
+              <svg width="36" height="36" viewBox="0 0 48 48" fill="none">
+                <path d="M24 4L8 11v12c0 10.5 7 19.5 16 22 9-2.5 16-11.5 16-22V11L24 4z"
+                  fill="rgba(0,229,170,0.1)" stroke="#00e5aa" strokeWidth="2" />
+                <path d="M24 18c-3.3 0-6 2.7-6 6s2.7 6 6 6 6-2.7 6-6"
+                  stroke="#00e5aa" strokeWidth="1.5" strokeLinecap="round" fill="none" opacity="0.6" />
+                <path d="M24 21c-1.7 0-3 1.3-3 3s1.3 3 3 3 3-1.3 3-3"
+                  stroke="#00e5aa" strokeWidth="1.5" strokeLinecap="round" fill="none" opacity="0.8" />
+                <circle cx="24" cy="24" r="1.5" fill="#00e5aa" />
+                <path d="M17 17c1.8-2.5 4.6-4 7.5-4s5.5 1.3 7.2 3.5"
+                  stroke="#6c63ff" strokeWidth="1.5" strokeLinecap="round" fill="none" opacity="0.5" />
               </svg>
             </div>
           </div>
 
           {/* Title */}
-          <h1
-            className="text-5xl font-black tracking-tight mb-1"
-            style={{
-              background: "linear-gradient(135deg, #00ffb4 0%, #00c8ff 50%, #a855f7 100%)",
+          <div style={{ textAlign: "center", marginBottom: "8px" }}>
+            <h1 style={{
+              fontFamily: "'Syne', sans-serif",
+              fontSize: "36px", fontWeight: "800",
+              letterSpacing: "-1.5px", lineHeight: 1,
+              background: "linear-gradient(135deg, #00e5aa 0%, #00b4d8 45%, #6c63ff 100%)",
               WebkitBackgroundClip: "text",
               WebkitTextFillColor: "transparent",
-              fontFamily: "'Georgia', serif",
-              letterSpacing: "-1px",
-            }}
-          >
-            ArtShield
-          </h1>
+              backgroundClip: "text",
+            }}>
+              ArtShield
+            </h1>
+            <p style={{
+              fontSize: "10px",
+              letterSpacing: "0.3em",
+              textTransform: "uppercase",
+              color: "rgba(0,229,170,0.6)",
+              marginTop: "6px",
+              fontFamily: "'Syne', sans-serif",
+              fontWeight: "600",
+            }}>
+              Digital Art Protection
+            </p>
+          </div>
 
-          {/* Tagline */}
-          <p
-            className="text-xs uppercase tracking-[0.3em] mb-1"
-            style={{ color: "rgba(0,255,180,0.6)" }}
-          >
-            Digital Art Protection
-          </p>
-
-          <p className="text-sm mt-4 mb-8 leading-relaxed"
-            style={{ color: "rgba(255,255,255,0.4)" }}
-          >
-            Your artwork deserves a <span style={{ color: "rgba(0,255,180,0.8)" }}>permanent identity</span>.
-            Register. Protect. Own.
+          {/* Description */}
+          <p style={{
+            textAlign: "center", fontSize: "13px", lineHeight: "1.7",
+            color: "rgba(255,255,255,0.4)", margin: "20px 0 28px",
+          }}>
+            Protect your AI-generated artwork with{" "}
+            <span style={{ color: "rgba(0,229,170,0.9)", fontWeight: 500 }}>visual fingerprinting</span>
+            {" "}and immutable blockchain ownership records.
           </p>
 
           {/* Divider */}
-          <div className="flex items-center gap-3 mb-8">
-            <div className="flex-1 h-px" style={{ background: "rgba(255,255,255,0.08)" }} />
-            <span className="text-xs" style={{ color: "rgba(255,255,255,0.2)" }}>secure access</span>
-            <div className="flex-1 h-px" style={{ background: "rgba(255,255,255,0.08)" }} />
+          <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "24px" }}>
+            <div style={{ flex: 1, height: "1px", background: "rgba(255,255,255,0.08)" }} />
+            <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.2)", letterSpacing: "0.1em" }}>
+              SECURE ACCESS
+            </span>
+            <div style={{ flex: 1, height: "1px", background: "rgba(255,255,255,0.08)" }} />
           </div>
 
           {/* Google Button */}
           <button
             onClick={() => signIn("google", { callbackUrl: "/" })}
-            className="w-full flex items-center justify-center gap-3 py-4 px-6 rounded-2xl font-semibold text-sm transition-all duration-300"
             style={{
-              background: "rgba(255,255,255,0.06)",
-              border: "1px solid rgba(255,255,255,0.12)",
-              color: "rgba(255,255,255,0.9)",
+              width: "100%", padding: "14px 20px", borderRadius: "14px",
+              border: "1px solid rgba(255,255,255,0.1)",
+              background: "rgba(255,255,255,0.05)",
+              color: "rgba(255,255,255,0.85)",
+              fontSize: "14px", fontWeight: "600",
+              fontFamily: "'Syne', sans-serif",
+              cursor: "pointer", display: "flex", alignItems: "center",
+              justifyContent: "center", gap: "12px",
+              transition: "all 0.2s ease",
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = "rgba(0,255,180,0.1)";
-              e.currentTarget.style.border = "1px solid rgba(0,255,180,0.4)";
-              e.currentTarget.style.boxShadow = "0 0 30px rgba(0,255,180,0.1)";
+              e.currentTarget.style.background = "rgba(0,229,170,0.08)";
+              e.currentTarget.style.borderColor = "rgba(0,229,170,0.3)";
               e.currentTarget.style.transform = "translateY(-2px)";
+              e.currentTarget.style.boxShadow = "0 0 30px rgba(0,229,170,0.1)";
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.background = "rgba(255,255,255,0.06)";
-              e.currentTarget.style.border = "1px solid rgba(255,255,255,0.12)";
-              e.currentTarget.style.boxShadow = "none";
+              e.currentTarget.style.background = "rgba(255,255,255,0.05)";
+              e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)";
               e.currentTarget.style.transform = "translateY(0)";
+              e.currentTarget.style.boxShadow = "none";
             }}
           >
             <svg width="20" height="20" viewBox="0 0 48 48">
@@ -220,22 +201,37 @@ export default function LoginPage() {
             Continue with Google
           </button>
 
-          {/* Features row */}
-          <div className="flex justify-center gap-6 mt-8">
-            {["pHash Protected", "Instant Verify", "Ownership Proof"].map((f) => (
-              <div key={f} className="flex flex-col items-center gap-1">
-                <div className="w-1.5 h-1.5 rounded-full" style={{ background: "#00ffb4" }} />
-                <span className="text-xs" style={{ color: "rgba(255,255,255,0.25)" }}>{f}</span>
-              </div>
+          {/* Feature pills */}
+          <div style={{ display: "flex", justifyContent: "center", gap: "8px", marginTop: "24px", flexWrap: "wrap" }}>
+            {["🔍 pHash Detection", "⛓️ Blockchain Proof", "🛡️ Instant Register"].map((f) => (
+              <span key={f} style={{
+                fontSize: "11px", padding: "5px 10px", borderRadius: "20px",
+                background: "rgba(0,229,170,0.06)",
+                border: "1px solid rgba(0,229,170,0.15)",
+                color: "rgba(0,229,170,0.7)", fontWeight: 500,
+              }}>
+                {f}
+              </span>
             ))}
           </div>
         </div>
 
         {/* Footer */}
-        <p className="text-center mt-6 text-xs" style={{ color: "rgba(255,255,255,0.15)" }}>
+        <p style={{
+          textAlign: "center", marginTop: "20px", fontSize: "11px",
+          color: "rgba(255,255,255,0.15)", letterSpacing: "0.05em",
+        }}>
           © 2026 ArtShield • Built for creators, by creators
         </p>
       </div>
+
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap');
+        @keyframes float {
+          0%, 100% { transform: translateY(0px); }
+          50% { transform: translateY(-8px); }
+        }
+      `}</style>
     </div>
   );
 }

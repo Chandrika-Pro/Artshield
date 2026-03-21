@@ -1,16 +1,42 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-/* Force entire app to dark */
-
-html,
-body {
-  background-color: #000000;
-  color: #ffffff;
-  min-height: 100%;
-  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
-}
-
-/* Optional: smoother text rendering */
 * {
   box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: #060810;
+  color: rgba(255, 255, 255, 0.92);
+  font-family: 'DM Sans', sans-serif;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #0c0f1a;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 229, 170, 0.2);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 229, 170, 0.4);
+}
+
+/* Selection */
+::selection {
+  background: rgba(0, 229, 170, 0.2);
+  color: rgba(255, 255, 255, 0.92);
 }
