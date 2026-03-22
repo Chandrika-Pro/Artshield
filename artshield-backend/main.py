@@ -80,7 +80,40 @@ def calculate_similarity(phash1, phash2):
 def root():
     return {"message": "ArtShield Backend Running 🚀"}
 
+# =========================
+# History Endpoint
+# =========================
+@app.get("/history")
+def get_history(email: str):
+    db = SessionLocal()
+    try:
+        artworks = db.query(Artwork).filter(
+            Artwork.owner_email == email
+        ).order_by(Artwork.registered_at.desc()).all()
+        return {
+            "history": [
+                {
+                    "id": art.id,
+                    "hash": art.phash,
+                    "owner_name": art.owner_name,
+                    "owner_email": art.owner_email,
+                    "registered_at": art.registered_at.strftime(
+                        "%B %d, %Y at %I:%M %p"
+                    ),
+                }
+                for art in artworks
+            ],
+            "total": len(artworks),
+        }
+    except Exception as e:
+        return {"error": str(e), "history": []}
+    finally:
+        db.close()
 
+
+# =========================
+# Upload Endpoint
+# =========================
 @app.post("/upload")
 async def upload_image(
     file: UploadFile = File(...),

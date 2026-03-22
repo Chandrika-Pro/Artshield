@@ -10,12 +10,16 @@ const geistSans = Geist({
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
-  subsets: ["latin",],
+  subsets: ["latin"],
 });
 
 export const metadata: Metadata = {
-  title: "ArtShield AI",
-  description: "AI-powered image protection platform",
+  title: {
+    default: "ArtShield — Protect Your Digital Art",
+    template: "%s — ArtShield",
+  },
+  description: "Protect your AI-generated artwork using visual fingerprinting and blockchain ownership records. Prove you were first.",
+  keywords: ["art protection", "blockchain", "AI art", "copyright", "pHash", "digital art"],
 };
 
 export default function RootLayout({

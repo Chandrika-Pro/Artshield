@@ -3,7 +3,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
-import { getContract } from "../blockchain";
 
 interface UploadResult {
   hash: string;
@@ -19,11 +18,11 @@ interface ArtworkHistory {
   id: number;
   hash: string;
   owner_name: string;
+  owner_email: string;
   registered_at: string;
-  tx_hash?: string;
 }
 
-export default function Home() {
+export default function Dashboard() {
   const { data: session, status } = useSession();
   const router = useRouter();
 
@@ -31,24 +30,63 @@ export default function Home() {
   const [preview, setPreview] = useState<string | null>(null);
   const [result, setResult] = useState<UploadResult | null>(null);
   const [loading, setLoading] = useState(false);
-  const [blockchainLoading, setBlockchainLoading] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState("");
   const [dragActive, setDragActive] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [activeTab, setActiveTab] = useState<"upload" | "history">("upload");
   const [history, setHistory] = useState<ArtworkHistory[]>([]);
-  const [txHash, setTxHash] = useState("");
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [walletConnected, setWalletConnected] = useState(false);
   const [walletAddress, setWalletAddress] = useState("");
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { setMounted(true); }, []);
+  // Restore wallet + mount
+  useEffect(() => {
+    setMounted(true);
+    const savedWallet = localStorage.getItem("artshield-wallet");
+    if (savedWallet) {
+      setWalletAddress(savedWallet);
+      setWalletConnected(true);
+    }
+  }, []);
 
+  // Redirect if not logged in
   useEffect(() => {
     if (status === "unauthenticated") router.push("/login");
   }, [status, router]);
+
+  // Fetch history when session is ready
+  useEffect(() => {
+    if (session?.user?.email && status === "authenticated") {
+      fetchHistory();
+    }
+  }, [session, status]);
+
+  const fetchHistory = async () => {
+    if (!session?.user?.email) return;
+    setHistoryLoading(true);
+    try {
+      const response = await fetch(
+  `     ${process.env.NEXT_PUBLIC_API_URL}/history?email=${session.user.email}`
+      );
+      const data = await response.json();
+      if (data.history) {
+        setHistory(data.history);
+      }
+    } catch (err) {
+      console.error("Failed to fetch history:", err);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  // Handle tab change
+  const handleTabChange = (tab: "upload" | "history") => {
+    setActiveTab(tab);
+    if (tab === "history") fetchHistory();
+  };
 
   if (status === "loading") {
     return (
@@ -81,20 +119,8 @@ export default function Home() {
       const accounts = await ethereum.request({ method: "eth_requestAccounts" });
       setWalletAddress(accounts[0]);
       setWalletConnected(true);
+      localStorage.setItem("artshield-wallet", accounts[0]);
     } catch (err) { console.error(err); }
-  };
-
-  const registerOnBlockchain = async (phash: string) => {
-    try {
-      setBlockchainLoading(true);
-      const contract = await getContract();
-      if (!contract) return null;
-      const tx = await contract.registerArtwork(phash, session.user?.name || "Unknown", session.user?.email || "Unknown");
-      await tx.wait();
-      setTxHash(tx.hash);
-      return tx.hash;
-    } catch (err) { return null; }
-    finally { setBlockchainLoading(false); }
   };
 
   const simulateProgress = () => {
@@ -106,7 +132,7 @@ export default function Home() {
 
   const handleUpload = async () => {
     if (!file) { setError("Please upload an image first."); return; }
-    setError(""); setTxHash(""); setLoading(true); simulateProgress();
+    setError(""); setLoading(true); simulateProgress();
     try {
       const formData = new FormData();
       formData.append("file", file);
@@ -116,11 +142,8 @@ export default function Home() {
       const data = await response.json();
       if (!response.ok) throw new Error(data?.error || "Server error.");
       setResult(data); setProgress(100);
-      if (!data.is_duplicate && walletConnected) {
-        const hash = await registerOnBlockchain(data.hash);
-        setHistory((prev) => [{ id: Date.now(), hash: data.hash, owner_name: data.original_owner, registered_at: data.registered_at, tx_hash: hash || undefined }, ...prev]);
-      } else if (!data.is_duplicate) {
-        setHistory((prev) => [{ id: Date.now(), hash: data.hash, owner_name: data.original_owner, registered_at: data.registered_at }, ...prev]);
+      if (!data.is_duplicate) {
+        await fetchHistory();
       }
     } catch (err) { setError(err instanceof Error ? err.message : "Upload failed."); setResult(null); }
     setLoading(false);
@@ -130,7 +153,7 @@ export default function Home() {
     if (!selectedFile) return;
     if (!selectedFile.type.startsWith("image/")) { setError("Only image files are allowed."); return; }
     setFile(selectedFile); setPreview(URL.createObjectURL(selectedFile));
-    setResult(null); setError(""); setTxHash("");
+    setResult(null); setError("");
   };
 
   const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
@@ -156,7 +179,8 @@ export default function Home() {
       }}>
 
         {/* Logo */}
-        <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: "160px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: "160px", cursor: "pointer" }}
+          onClick={() => router.push("/")}>
           <div style={{
             width: "32px", height: "32px", borderRadius: "9px", flexShrink: 0,
             background: "linear-gradient(135deg, rgba(0,229,170,0.15), rgba(108,99,255,0.15))",
@@ -189,7 +213,7 @@ export default function Home() {
           border: "1px solid rgba(255,255,255,0.07)",
         }}>
           {(["upload", "history"] as const).map((tab) => (
-            <button key={tab} onClick={() => setActiveTab(tab)} style={{
+            <button key={tab} onClick={() => handleTabChange(tab)} style={{
               padding: "6px 18px", borderRadius: "8px", fontSize: "13px",
               fontWeight: "600", fontFamily: "'Syne', sans-serif",
               cursor: "pointer", transition: "all 0.2s ease",
@@ -197,7 +221,7 @@ export default function Home() {
               border: activeTab === tab ? "1px solid rgba(0,229,170,0.25)" : "1px solid transparent",
               color: activeTab === tab ? "#00e5aa" : "rgba(255,255,255,0.35)",
             }}>
-              {tab === "upload" ? "🛡️ Protect" : "📋 History"}
+              {tab === "upload" ? "🛡️ Protect" : `📋 History ${history.length > 0 ? `(${history.length})` : ""}`}
             </button>
           ))}
         </div>
@@ -205,8 +229,8 @@ export default function Home() {
         {/* Right side */}
         <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: "160px", justifyContent: "flex-end" }}>
 
-          {/* Wallet button */}
-          <button onClick={connectWallet} style={{
+          {/* Wallet button — optional */}
+          <button onClick={connectWallet} title="Connect MetaMask for blockchain proof" style={{
             padding: "6px 12px", borderRadius: "9px", fontSize: "12px",
             fontWeight: "600", cursor: "pointer", transition: "all 0.2s ease",
             fontFamily: "'Syne', sans-serif",
@@ -218,24 +242,13 @@ export default function Home() {
             🦊 {walletConnected ? `${walletAddress.slice(0, 5)}...${walletAddress.slice(-3)}` : "Wallet"}
           </button>
 
-          {/* Avatar + name */}
-          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-            {session.user?.image && (
-              <img src={session.user.image} alt="avatar" style={{
-                width: "30px", height: "30px", borderRadius: "50%",
-                border: "1.5px solid rgba(0,229,170,0.3)", flexShrink: 0,
-              }} />
-            )}
-            <span style={{
-              fontSize: "12px", fontWeight: "600", color: "rgba(255,255,255,0.6)",
-              maxWidth: "90px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-              display: "none",
-            }}
-              className="sm:block"
-            >
-              {session.user?.name?.split(" ")[0]}
-            </span>
-          </div>
+          {/* Avatar */}
+          {session.user?.image && (
+            <img src={session.user.image} alt="avatar" style={{
+              width: "30px", height: "30px", borderRadius: "50%",
+              border: "1.5px solid rgba(0,229,170,0.3)", flexShrink: 0,
+            }} />
+          )}
 
           {/* Sign out */}
           <button onClick={() => signOut({ callbackUrl: "/login" })} style={{
@@ -258,29 +271,6 @@ export default function Home() {
       {/* ===== MAIN CONTENT ===== */}
       <main style={{ maxWidth: "680px", margin: "0 auto", padding: "40px 20px 80px" }}>
 
-        {/* Wallet warning */}
-        {!walletConnected && (
-          <div style={{
-            marginBottom: "20px", padding: "12px 16px", borderRadius: "14px",
-            background: "rgba(255,179,71,0.06)",
-            border: "1px solid rgba(255,179,71,0.2)",
-            display: "flex", alignItems: "center", gap: "10px", fontSize: "13px",
-            color: "rgba(255,179,71,0.8)",
-          }}>
-            <span>⚠️</span>
-            <span style={{ flex: 1 }}>Connect MetaMask to register artwork on blockchain</span>
-            <button onClick={connectWallet} style={{
-              padding: "5px 12px", borderRadius: "8px", fontSize: "12px",
-              fontWeight: "600", cursor: "pointer",
-              background: "rgba(255,179,71,0.1)",
-              border: "1px solid rgba(255,179,71,0.3)",
-              color: "rgba(255,179,71,0.9)",
-            }}>
-              Connect
-            </button>
-          </div>
-        )}
-
         {/* ===== UPLOAD TAB ===== */}
         {activeTab === "upload" && (
           <div style={{
@@ -288,7 +278,6 @@ export default function Home() {
             transform: mounted ? "translateY(0)" : "translateY(20px)",
             transition: "all 0.6s cubic-bezier(0.16,1,0.3,1)",
           }}>
-
             <div style={{ textAlign: "center", marginBottom: "32px" }}>
               <h1 style={{
                 fontFamily: "'Syne', sans-serif", fontWeight: "800",
@@ -304,7 +293,6 @@ export default function Home() {
               </p>
             </div>
 
-            {/* Upload Card */}
             <div style={{
               borderRadius: "20px", padding: "24px", marginBottom: "20px",
               background: "rgba(255,255,255,0.03)",
@@ -312,7 +300,6 @@ export default function Home() {
               backdropFilter: "blur(20px)",
               boxShadow: "0 4px 40px rgba(0,0,0,0.3)",
             }}>
-
               {/* Drop zone */}
               <div
                 onClick={() => fileInputRef.current?.click()}
@@ -380,20 +367,20 @@ export default function Home() {
               )}
 
               {/* Analyze Button */}
-              <button onClick={handleUpload} disabled={loading || blockchainLoading} style={{
+              <button onClick={handleUpload} disabled={loading} style={{
                 marginTop: "16px", width: "100%", padding: "14px",
                 borderRadius: "14px", fontWeight: "700", fontSize: "14px",
                 fontFamily: "'Syne', sans-serif",
-                cursor: loading || blockchainLoading ? "not-allowed" : "pointer",
+                cursor: loading ? "not-allowed" : "pointer",
                 transition: "all 0.2s ease",
-                background: loading || blockchainLoading
+                background: loading
                   ? "rgba(255,255,255,0.03)"
                   : "linear-gradient(135deg, rgba(0,229,170,0.12), rgba(108,99,255,0.12))",
-                border: `1px solid ${loading || blockchainLoading ? "rgba(255,255,255,0.07)" : "rgba(0,229,170,0.25)"}`,
-                color: loading || blockchainLoading ? "rgba(255,255,255,0.25)" : "#00e5aa",
-                boxShadow: loading || blockchainLoading ? "none" : "0 0 30px rgba(0,229,170,0.08)",
+                border: `1px solid ${loading ? "rgba(255,255,255,0.07)" : "rgba(0,229,170,0.25)"}`,
+                color: loading ? "rgba(255,255,255,0.25)" : "#00e5aa",
+                boxShadow: loading ? "none" : "0 0 30px rgba(0,229,170,0.08)",
               }}>
-                {blockchainLoading ? "⛓️ Registering on Blockchain..." : loading ? "🔍 Analyzing Artwork..." : "🛡️ Analyze & Register Artwork"}
+                {loading ? "🔍 Analyzing Artwork..." : "🛡️ Analyze & Register Artwork"}
               </button>
             </div>
 
@@ -406,7 +393,6 @@ export default function Home() {
                 backdropFilter: "blur(20px)",
                 animation: "fadeUp 0.4s ease",
               }}>
-
                 {/* Status header */}
                 <div style={{
                   padding: "16px 20px", display: "flex", alignItems: "center", gap: "12px",
@@ -433,11 +419,7 @@ export default function Home() {
                   <span style={{
                     padding: "4px 12px", borderRadius: "20px", fontSize: "12px",
                     fontWeight: "700", fontFamily: "'Syne', sans-serif",
-                    background: result.similarity >= 80
-                      ? "rgba(255,77,109,0.12)"
-                      : result.similarity >= 50
-                      ? "rgba(255,179,71,0.12)"
-                      : "rgba(0,229,170,0.12)",
+                    background: result.similarity >= 80 ? "rgba(255,77,109,0.12)" : result.similarity >= 50 ? "rgba(255,179,71,0.12)" : "rgba(0,229,170,0.12)",
                     color: result.similarity >= 80 ? "#ff4d6d" : result.similarity >= 50 ? "#ffb347" : "#00e5aa",
                     border: `1px solid ${result.similarity >= 80 ? "rgba(255,77,109,0.2)" : result.similarity >= 50 ? "rgba(255,179,71,0.2)" : "rgba(0,229,170,0.2)"}`,
                   }}>
@@ -447,12 +429,7 @@ export default function Home() {
 
                 {/* Info grid */}
                 <div style={{ padding: "20px", display: "grid", gap: "12px" }}>
-
-                  {/* Fingerprint */}
-                  <div style={{
-                    padding: "14px 16px", borderRadius: "12px",
-                    background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)",
-                  }}>
+                  <div style={{ padding: "14px 16px", borderRadius: "12px", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
                     <p style={{ fontSize: "10px", fontFamily: "'Syne', sans-serif", fontWeight: "600", letterSpacing: "0.15em", color: "rgba(255,255,255,0.25)", textTransform: "uppercase", marginBottom: "6px" }}>
                       Visual Fingerprint
                     </p>
@@ -471,7 +448,6 @@ export default function Home() {
                         {result.original_email}
                       </p>
                     </div>
-
                     <div style={{ padding: "14px 16px", borderRadius: "12px", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
                       <p style={{ fontSize: "10px", fontFamily: "'Syne', sans-serif", fontWeight: "600", letterSpacing: "0.15em", color: "rgba(255,255,255,0.25)", textTransform: "uppercase", marginBottom: "6px" }}>
                         {result.is_duplicate ? "Originally Registered" : "Registered On"}
@@ -479,17 +455,6 @@ export default function Home() {
                       <p style={{ fontSize: "12px", color: "rgba(255,255,255,0.6)", lineHeight: 1.4 }}>{result.registered_at}</p>
                     </div>
                   </div>
-
-                  {txHash && (
-                    <div style={{ padding: "14px 16px", borderRadius: "12px", background: "rgba(0,229,170,0.03)", border: "1px solid rgba(0,229,170,0.15)" }}>
-                      <p style={{ fontSize: "10px", fontFamily: "'Syne', sans-serif", fontWeight: "600", letterSpacing: "0.15em", color: "#00e5aa", textTransform: "uppercase", marginBottom: "6px" }}>
-                        ⛓️ Blockchain Transaction
-                      </p>
-                      <p style={{ fontSize: "12px", fontFamily: "'DM Mono', monospace", color: "#00e5aa", wordBreak: "break-all", opacity: 0.8 }}>
-                        {txHash}
-                      </p>
-                    </div>
-                  )}
                 </div>
               </div>
             )}
@@ -508,10 +473,25 @@ export default function Home() {
               }}>
                 Registered Artworks
               </h1>
-              <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.3)" }}>Your protected artworks this session</p>
+              <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.3)" }}>
+                All artworks registered by {session.user?.name?.split(" ")[0]}
+              </p>
             </div>
 
-            {history.length === 0 ? (
+            {historyLoading ? (
+              <div style={{ textAlign: "center", padding: "60px 20px" }}>
+                <div style={{
+                  width: "36px", height: "36px", borderRadius: "50%",
+                  border: "2px solid rgba(0,229,170,0.2)",
+                  borderTopColor: "#00e5aa",
+                  animation: "spin 0.8s linear infinite",
+                  margin: "0 auto 16px",
+                }} />
+                <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.3)" }}>
+                  Loading your artworks...
+                </p>
+              </div>
+            ) : history.length === 0 ? (
               <div style={{
                 textAlign: "center", padding: "60px 20px", borderRadius: "20px",
                 border: "2px dashed rgba(255,255,255,0.07)",
@@ -524,7 +504,7 @@ export default function Home() {
                 <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.2)", marginBottom: "20px" }}>
                   Go to Protect tab and upload your first artwork!
                 </p>
-                <button onClick={() => setActiveTab("upload")} style={{
+                <button onClick={() => handleTabChange("upload")} style={{
                   padding: "10px 24px", borderRadius: "12px", fontSize: "13px",
                   fontWeight: "700", fontFamily: "'Syne', sans-serif", cursor: "pointer",
                   background: "rgba(0,229,170,0.08)",
@@ -534,57 +514,73 @@ export default function Home() {
                 </button>
               </div>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                {history.map((art, i) => (
-                  <div key={art.id} style={{
-                    padding: "16px 18px", borderRadius: "16px",
-                    background: "rgba(255,255,255,0.03)",
-                    border: "1px solid rgba(255,255,255,0.07)",
-                    animation: `fadeUp 0.3s ease ${i * 0.05}s both`,
-                    backdropFilter: "blur(20px)",
+              <>
+                {/* Stats bar */}
+                <div style={{
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                  padding: "12px 16px", borderRadius: "12px", marginBottom: "16px",
+                  background: "rgba(0,229,170,0.04)",
+                  border: "1px solid rgba(0,229,170,0.12)",
+                }}>
+                  <p style={{ fontSize: "13px", color: "rgba(255,255,255,0.5)" }}>
+                    Total registered: <span style={{ color: "#00e5aa", fontWeight: "700" }}>{history.length} artwork{history.length !== 1 ? "s" : ""}</span>
+                  </p>
+                  <button onClick={fetchHistory} style={{
+                    padding: "4px 12px", borderRadius: "8px", fontSize: "12px",
+                    fontWeight: "600", cursor: "pointer",
+                    background: "rgba(0,229,170,0.08)",
+                    border: "1px solid rgba(0,229,170,0.2)", color: "#00e5aa",
                   }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
-                      <div style={{
-                        width: "42px", height: "42px", borderRadius: "12px", flexShrink: 0,
-                        background: "rgba(0,229,170,0.08)",
-                        border: "1px solid rgba(0,229,170,0.2)",
-                        display: "flex", alignItems: "center", justifyContent: "center", fontSize: "20px",
-                      }}>
-                        🖼️
+                    🔄 Refresh
+                  </button>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                  {history.map((art, i) => (
+                    <div key={art.id} style={{
+                      padding: "16px 18px", borderRadius: "16px",
+                      background: "rgba(255,255,255,0.03)",
+                      border: "1px solid rgba(255,255,255,0.07)",
+                      animation: `fadeUp 0.3s ease ${i * 0.05}s both`,
+                      backdropFilter: "blur(20px)",
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+                        <div style={{
+                          width: "42px", height: "42px", borderRadius: "12px", flexShrink: 0,
+                          background: "rgba(0,229,170,0.08)",
+                          border: "1px solid rgba(0,229,170,0.2)",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          fontFamily: "'Syne', sans-serif", fontWeight: "800",
+                          fontSize: "14px", color: "rgba(0,229,170,0.6)",
+                        }}>
+                          #{i + 1}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <p style={{ fontSize: "12px", fontFamily: "'DM Mono', monospace", color: "#00e5aa", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {art.hash}
+                          </p>
+                          <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.3)", marginTop: "3px" }}>
+                            {art.registered_at}
+                          </p>
+                        </div>
+                        <span style={{
+                          padding: "4px 10px", borderRadius: "8px", fontSize: "11px",
+                          fontWeight: "700", fontFamily: "'Syne', sans-serif", flexShrink: 0,
+                          background: "rgba(0,229,170,0.08)",
+                          border: "1px solid rgba(0,229,170,0.2)", color: "#00e5aa",
+                        }}>
+                          ✓ Original
+                        </span>
                       </div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ fontSize: "12px", fontFamily: "'DM Mono', monospace", color: "#00e5aa", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                          {art.hash}
-                        </p>
-                        <p style={{ fontSize: "11px", color: "rgba(255,255,255,0.3)", marginTop: "3px" }}>
-                          {art.registered_at}
-                        </p>
-                      </div>
-                      <span style={{
-                        padding: "4px 10px", borderRadius: "8px", fontSize: "11px",
-                        fontWeight: "700", fontFamily: "'Syne', sans-serif", flexShrink: 0,
-                        background: "rgba(0,229,170,0.08)",
-                        border: "1px solid rgba(0,229,170,0.2)", color: "#00e5aa",
-                      }}>
-                        ✓ Original
-                      </span>
                     </div>
-                    {art.tx_hash && (
-                      <div style={{ marginTop: "10px", paddingTop: "10px", borderTop: "1px solid rgba(255,255,255,0.05)" }}>
-                        <p style={{ fontSize: "11px", fontFamily: "'DM Mono', monospace", color: "#00e5aa", opacity: 0.6 }}>
-                          ⛓️ {art.tx_hash.slice(0, 32)}...
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              </>
             )}
           </div>
         )}
       </main>
 
-      {/* Footer */}
       <footer style={{
         textAlign: "center", padding: "20px",
         borderTop: "1px solid rgba(255,255,255,0.05)",

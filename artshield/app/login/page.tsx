@@ -2,10 +2,12 @@
 
 import { signIn } from "next-auth/react";
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [mounted, setMounted] = useState(false);
+  const router = useRouter();
 
   useEffect(() => {
     setMounted(true);
@@ -80,6 +82,34 @@ export default function LoginPage() {
     }}>
       <canvas ref={canvasRef} style={{ position: "absolute", inset: 0, zIndex: 0 }} />
 
+      {/* Back to Home button */}
+      <button
+        onClick={() => router.push("/")}
+        style={{
+          position: "fixed", top: "20px", left: "20px", zIndex: 100,
+          display: "flex", alignItems: "center", gap: "6px",
+          padding: "8px 16px", borderRadius: "10px",
+          background: "rgba(255,255,255,0.04)",
+          border: "1px solid rgba(255,255,255,0.1)",
+          color: "rgba(255,255,255,0.5)",
+          fontSize: "13px", fontWeight: "600",
+          fontFamily: "'Syne', sans-serif",
+          cursor: "pointer", transition: "all 0.2s ease",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = "rgba(255,255,255,0.08)";
+          e.currentTarget.style.color = "rgba(255,255,255,0.9)";
+          e.currentTarget.style.borderColor = "rgba(255,255,255,0.2)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = "rgba(255,255,255,0.04)";
+          e.currentTarget.style.color = "rgba(255,255,255,0.5)";
+          e.currentTarget.style.borderColor = "rgba(255,255,255,0.1)";
+        }}
+      >
+        ← Back to Home
+      </button>
+
       {/* Main card */}
       <div style={{
         position: "relative", zIndex: 10,
@@ -134,13 +164,9 @@ export default function LoginPage() {
               ArtShield
             </h1>
             <p style={{
-              fontSize: "10px",
-              letterSpacing: "0.3em",
-              textTransform: "uppercase",
-              color: "rgba(0,229,170,0.6)",
-              marginTop: "6px",
-              fontFamily: "'Syne', sans-serif",
-              fontWeight: "600",
+              fontSize: "10px", letterSpacing: "0.3em", textTransform: "uppercase",
+              color: "rgba(0,229,170,0.6)", marginTop: "6px",
+              fontFamily: "'Syne', sans-serif", fontWeight: "600",
             }}>
               Digital Art Protection
             </p>
@@ -159,15 +185,13 @@ export default function LoginPage() {
           {/* Divider */}
           <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "24px" }}>
             <div style={{ flex: 1, height: "1px", background: "rgba(255,255,255,0.08)" }} />
-            <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.2)", letterSpacing: "0.1em" }}>
-              SECURE ACCESS
-            </span>
+            <span style={{ fontSize: "11px", color: "rgba(255,255,255,0.2)", letterSpacing: "0.1em" }}>SECURE ACCESS</span>
             <div style={{ flex: 1, height: "1px", background: "rgba(255,255,255,0.08)" }} />
           </div>
 
           {/* Google Button */}
           <button
-            onClick={() => signIn("google", { callbackUrl: "/" })}
+            onClick={() => signIn("google", { callbackUrl: "/dashboard" })}
             style={{
               width: "100%", padding: "14px 20px", borderRadius: "14px",
               border: "1px solid rgba(255,255,255,0.1)",
