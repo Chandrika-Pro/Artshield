@@ -46,6 +46,7 @@ class Artwork(Base):
     id = Column(Integer, primary_key=True, index=True)
     sha256 = Column(String, unique=True, index=True)
     phash = Column(String)
+    filename = Column(String, nullable=True)
     owner_name = Column(String)
     owner_email = Column(String)
     registered_at = Column(DateTime)
@@ -80,6 +81,7 @@ def calculate_similarity(phash1, phash2):
 def root():
     return {"message": "ArtShield Backend Running 🚀"}
 
+
 # =========================
 # History Endpoint
 # =========================
@@ -95,6 +97,7 @@ def get_history(email: str):
                 {
                     "id": art.id,
                     "hash": art.phash,
+                    "filename": art.filename or "Unknown file",
                     "owner_name": art.owner_name,
                     "owner_email": art.owner_email,
                     "registered_at": art.registered_at.strftime(
@@ -124,6 +127,7 @@ async def upload_image(
 
     try:
         file_bytes = await file.read()
+        filename = file.filename or "unknown"
 
         # Calculate SHA256
         sha256_hash = calculate_sha256(file_bytes)
@@ -140,6 +144,7 @@ async def upload_image(
                 "similarity": 100.0,
                 "message": "⚠️ Exact duplicate found",
                 "is_duplicate": True,
+                "filename": existing_exact.filename or "Unknown file",
                 "original_owner": existing_exact.owner_name,
                 "original_email": existing_exact.owner_email,
                 "registered_at": existing_exact.registered_at.strftime(
@@ -169,6 +174,7 @@ async def upload_image(
                 "similarity": highest_similarity,
                 "message": f"⚠️ Potential Copy Detected ({highest_similarity}% similar)",
                 "is_duplicate": True,
+                "filename": most_similar_artwork.filename or "Unknown file",
                 "original_owner": most_similar_artwork.owner_name,
                 "original_email": most_similar_artwork.owner_email,
                 "registered_at": most_similar_artwork.registered_at.strftime(
@@ -180,6 +186,7 @@ async def upload_image(
         new_artwork = Artwork(
             sha256=sha256_hash,
             phash=phash_value,
+            filename=filename,
             owner_name=owner_name,
             owner_email=owner_email,
             registered_at=datetime.now(timezone.utc),
@@ -193,6 +200,7 @@ async def upload_image(
             "similarity": highest_similarity,
             "message": "✅ Original Image — Registered Successfully!",
             "is_duplicate": False,
+            "filename": filename,
             "original_owner": owner_name,
             "original_email": owner_email,
             "registered_at": new_artwork.registered_at.strftime(
