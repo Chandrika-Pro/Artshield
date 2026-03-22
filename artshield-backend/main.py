@@ -1,6 +1,6 @@
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import create_engine, Column, Integer, String, DateTime
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 from PIL import Image
 import imagehash
@@ -52,7 +52,16 @@ class Artwork(Base):
     registered_at = Column(DateTime)
 
 
+# Create tables
 Base.metadata.create_all(bind=engine)
+
+# Add filename column if it doesn't exist yet (safe migration)
+try:
+    with engine.connect() as conn:
+        conn.execute(text("ALTER TABLE artworks ADD COLUMN IF NOT EXISTS filename VARCHAR"))
+        conn.commit()
+except Exception:
+    pass
 
 
 # =========================
